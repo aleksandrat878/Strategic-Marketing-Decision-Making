@@ -1,2 +1,2 @@
 # Strategic-Marketing-Decision-Making
-Projects created during the course on Master's in Erasmus University Rotterdam
+Marketing related projects created during Master's programme at Erasmus University Rotterdam
