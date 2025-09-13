@@ -1,0 +1,849 @@
+---
+title: "Marketing Mix Modelling"
+author: "Case study: FourTex"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+<br/>
+
+---
+
+## Introduction
+
+![](fourtex.png){width=100px}
+
+FourTex is an apparel brand. Its products are targeted at the mass market with a focus on casual apparel for men and women. The brand’s advertising is prominent and extensive, and is present on multiple channels such as television, radio, paid search, and social media. 
+
+Recently, the digital marketing tools have extended FourTex’s reach among the potential customers. The marketing director, Hannah Schmidt, was so proud of her team’s achievements. She was getting ready for a meeting with the management board to explain how successful their previous marketing campaigns were, and hoping to get some additional budget in order to further improve the brand’s online store visits and sales leads performance metrics.
+
+The meeting did not go as planned. In a difficult conversation, the chief executive officer (CEO) of the company said: *“Mrs. Schmidt, you always ask for more money, but can rarely explain how much incremental value this money will generate”.*  Coming out of the meeting, Mrs. Schmidt felt that she was under enormous pressure to demonstrate the value of her marketing decisions.
+
+Next day, she pulled some data from the company’s database, taking her notes. The table below provides a brief description of her data set:
+
+
+<br/>
+
+```{r eval=TRUE, echo=FALSE}
+table1<-data.frame(
+Marketing_Mix_Variable = c("Google AdWords", "Facebook ads", "TV ads", "Radio ads","Web traffic"),
+Description = c("Cost of Google AdWords campaigns", " Cost of sponsered ads delivered on Facebook", "Cost of TV advertising", "Cost of radio advertising", "Total number of visits to the website"),
+Channel = c("Online ","Online ", "Offline ", " Offline", "Online "),
+stringsAsFactors = FALSE
+)
+
+#print(table1)
+
+```
+
+
+```{r xtable, results="asis", echo=FALSE}
+#Note that you need to install the 'xtable' package if you have not done so before. 
+#install.packages("xtable")
+library(xtable)
+tab<-xtable(table1, caption=c("FourTex’s marketing mix dataset"))
+print(tab, type="html")
+
+```
+
+<br/>
+
+Being very keen to demonstrate marketing’s value, Mrs. Schmidt asked her analytics team to assess the impact of their Google AdWords, Facebook, TV, and radio ads on website traffic performance. She did not want to include the sales performance metric in the analysis because her campaigns last year aimed to increase conversion to the website rather than the sales outcomes. Therefore, she thought that the relevant key performance indicator was *website traffic*. 
+
+
+Finally, Mrs. Schmidt prepared a checklist for the analytics team. She seeks answers to the following questions:
+
+* Which marketing mix instrument really drives the performance outcome, i.e. website traffic?
+
+* What is the return on marketing investment? 
+
+* Should I keep pushing on with Google adwords and Facebook ads? Should I stop advertising on TV and radio channels? 
+
+How can Mrs. Schmidt demonstrate the impact of her marketing mix decisions to the management board? 
+
+<br/>
+
+---
+
+To address Mrs. Schmidt’s questions, we will build a marketing mix model that gauges the effectiveness of her marketing mix decisions and estimates the contribution of each advertising vehicle to website traffic performance. 
+
+Before we roll out the analyses, we should make sure that all our files are organised and our R environment is set up. 
+
+## Preparation and set-up
+
+Let's follow the below steps: 
+
+* Create a folder on your computer and name the folder (e.g., *fourtex*) 
+
+* Download the data to the folder you just created. 
+
+* Open your RStudio and launch a new R Markdown file from the 'File' tab. Name your R Markdown file (e.g. *mmm_fourtex*) and save it to your folder. 
+
+To set working directory, please run only part of the following chunk depending on the operating system of your device. To avoid running the codes that are not applicable and receiving error messages, please add $#$ before each line of non-applicable codes in the chunk below. For example, if you are using a Mac, you need to put $#$ before the code *setwd("~/Desktop/fourtex")*. See below. 
+
+```{r warning=FALSE}
+# Please run the following codes depending on the operating system on your laptop/PC. 
+
+# If you are using iOS, and your 'FourTex' folder is created on your 'Desktop' on your Mac, you will need to set your working directory to the *FourTex* folder in the following way :
+
+
+# if you are using Windows, and your 'FourTex' folder is created in your H drive: you need to set your working directory to the *FourTex* folder in the following way:
+
+#setwd("H:/downloads/fourtex")
+```
+
+Now, we are ready load the data set to R, and perform some exploratory data analysis to get a feel for the data. 
+
+
+## Exploratory data analysis 
+
+When you run the code chunk below, you will load the data to your R environment. 
+
+```{r}
+data<- read.csv(file = "data_fourtex.csv",header = TRUE)
+str(data)
+```
+
+The data set has 6 variables and 57 time series observations for each variable. 
+
+Now, if you check the environment tab from the top right corner of your RStudio screen, you will see that the data set is loaded. You can click on *data* and observe its elements. 
+
+Next, we would like to extract each of the variables to the environment tab: 
+
+```{r eval=TRUE, echo=TRUE}
+# Extract the variables 
+google_adwords<-data$Google_Adwords
+facebook<-data$Facebook 
+tv<-data$TV
+radio<-data$Radio
+traffic<-data$traffic
+```
+
+The environment tab lists these variables as *Values*. R knows the variables we want to work with. However, it does not know that they are time series variables. So, we should get them recognised as time series data by using the *ts* function.
+
+
+```{r}
+# Make the data time series data in R
+# Frequency=52
+google_adwords <- ts(google_adwords,frequency = 52, start=c(2020,28))
+facebook <- ts(facebook,frequency = 52, start=c(2020,28))
+tv <- ts(tv,frequency = 52, start=c(2020,28))
+radio <- ts(radio,frequency = 52, start=c(2020,28))
+traffic <- ts(traffic,frequency = 52, start=c(2020,28))
+
+```
+
+Note that the dataset runs on a weekly basis. We set the frequency of the data to $52$ weeks. However, not all the years have $52$ weeks. Normally, the year has $365.25/7=52.18$ weeks, on average. This allows for a leap year every fourth year. Therefore, some years may have `53` weeks. This is not an issue for our data as we have $57$ observations spanning over two years. None of them covers $53$ weeks. 
+
+
+**_Plot the data _**
+
+To get a feel for the data patterns, we need to perform a visual inspection through time series plots. First, we should sum up online spending variables to find the total online spending. We do the same for offline spending variables. See below.  
+
+```{r}
+online_total<-google_adwords +facebook
+offline_total<-tv+radio 
+
+```
+
+Then, we plot the time series data on total online spending, total offline spending and traffic: 
+
+```{r}
+#par(mfrow=c(1,3))
+plot(traffic, col="blue", main="Online Traffic")
+plot(online_total, col="darkgreen", main="Online spending")
+plot(offline_total, col="red", main="Offline spending")
+```
+
+
+</br>
+
+---
+
+**Question**: Looking at these plots, what do you observe? Do increases and decreases in online traffic coincide with online and offline spending? Do you see any seasonality or trend patterns? 
+
+---
+
+Next, we will have a look at the current budget allocation of online vs. traditional media spending. How much did the brand spend for online ads relative to offline ads?
+
+```{r}
+### Media spending share 
+sum_online<-sum(online_total)
+sum_offline<-sum(offline_total)
+total_spend<-sum_online+sum_offline
+
+online_share<-sum_online/total_spend
+offline_share<-sum_offline/total_spend
+
+### Pie-Chart for Media Spending Share 
+slices<-c(online_share, offline_share)
+lbls<-c("Online", "Offline")
+pct<-round(slices*100)
+lbls<-paste(lbls, pct)   # add percent data to labels
+lbls<-paste(lbls, "%", sep="") # add % sign to labels
+par(mfrow=c(1,1))
+pie(slices, labels=lbls, col=rainbow(length(lbls)), main="Ad Spending Share" )
+
+```
+
+The pie chart shows that FourTex spent 77% of its budget for offline ads while 23% of the budget went to online ads. 
+
+
+## Marketing mix modeling 
+
+After exploring the main features of the data, we are ready to investigate the drivers of the web traffic performance. We will develop a multiple regression model that uses the traffic data as dependent variable (i.e. response variable) while Google AdWords, Facebook, TV, and radio variables will be used as independent variables, also known as predictors. 
+
+### Diminishing returns 
+
+At this point, an important decision we need to make is which functional form to use in the model. Shall we assume a linear or a non-linear relationship? Marketing literature suggests that the relationship between advertising and performance variables mostly follows a diminishing return pattern (Hanssens et al., 2001, 2014), as illustrated in the following plot.  
+
+</br>
+
+<center>
+
+![](diminishing_return.png){width=40%}
+
+</center>
+
+</br>
+
+This plot tells us that initially spending more and more money on advertising is beneficial but after a certain point the additional value gained from an extra spending will be very small. How can we introduce this type of non-linearity in the model? A typical approach is to use a log-log model specification.^[A semi-log model can also be used to allow for the diminishing return pattern. The semi-log model suggests that log transformation is performed for the independent variable(s) but not for the dependent variable. Another alternative approach would be to take the square root of the independent variable(s). To decide which transformation suits best, one can try all alternative specifications and compare the model fit statistics.] The log-log regression model suggests that log transformation is performed for both sides of the equation. 
+
+
+Turning to our data application, with the log-log specification our marketing mix model becomes: 
+
+
+<br/>
+
+\[
+ln(Traffic_t)= \beta_0 + \beta_1 ln(Traffic_{t-1}) + \beta_2 ln(Adwords_t) + \beta_3 ln(Facebook_t) + \beta_4 ln(TV_t) + \beta_5 ln(Radio_t) + \epsilon_{t} 
+\] 
+  
+
+<br/>
+
+where $ln$ stands for natural logarithm. 
+
+---
+
+**Question**: Did you notice that we added the lagged traffic variable as an additional predictor to our model? Do you think including the first lagged traffic variable in the model makes sense? Why? 
+
+---
+
+
+To estimate the above log-log model, we will perform log transformation on our variables. 
+
+```{r}
+lngoogle_adwords<-log(google_adwords+1)
+lnfacebook<-log(facebook+1)
+lnTV<-log(tv+1)
+lnradio<-log(radio+1)
+lntraffic<-log(traffic+1)
+
+```
+
+Did you notice that we added $+1$ to the original variables? The reason for doing this is that some variables include zero observations. When we take the logarithm of zero, it is not identified. Therefore, we should add a small number to be able to take the logarithm.
+
+We have all the variables to be used in the model, except the first lagged traffic variable in logarithm, $lnTraffic_{t-1})$*. 
+The code chunk below creates this variable. 
+
+```{r}
+#Creating Lagged Traffic Variable 
+m <- 1   # one lag 
+#number of observations
+n <- length(traffic)
+#Build Lag
+L1.lntraffic <- c(rep(NA,m), lntraffic[1:(n-m)])
+
+```
+
+
+Now, let's run our model in R Markdown: 
+
+```{r}
+#Fit a Regression 
+options(scipen=999)
+#regression1 <- lm(traffic~L1.traffic+google_adwords+facebook+tv+radio)
+regression1 <- lm(lntraffic~L1.lntraffic+lngoogle_adwords+lnfacebook+lnTV+lnradio)
+summary(regression1)
+
+```
+
+<br/>
+
+Normally, R reports the numbers in scientific format (e.g. 1E-05). The first line of the code, *options(scipen=999)*  allows us to see the numbers in a non-scientific format. The second line defines our regression model: the traffic variable is explained by all the marketing variables and past traffic performance. Note that in coding a regression model in R, the dependent variable always precedes the sign $\sim$ while the predictors come after that sign. Finally, the third line puts the regression summary output in R Markdown. 
+
+
+
+**_Model Output_**
+
+Now, let's explore what the model output suggests. 
+
+<center>
+![](regression_output.png)
+
+</center>
+
+
+*Residuals*: 
+
+Recall that residuals represent the 'unexplained' part of the model, i.e. the impact of other factors that are not explicitly included in the model. The descriptive statistics (e.g. min, max) of residuals are reported at the top of the model output. 
+
+*Coefficient estimates*: 
+
+We can write down the estimated coefficients of this marketing mix model in an equation format: 
+
+<br/>
+
+\[
+ln(Traffic_t)=  3.151 +  0.536 ln(Traffic_{t-1}) +  0.155 ln(Adwords_t) + 0.194 ln(Facebook_t) + 0.005 ln(TV_t) +  0.007 ln(Radio_t) 
+\] 
+  
+
+<br/>
+
+
+The standard error of each coefficient shows at what precision level we estimated that particular coefficient, i.e. represents the uncertainty surrounding that coefficient. The t-value is obtained by dividing the coefficient by its standard error. P-value,Pr(>|t|), is computed based on the t-value, and helps us understand whether the coefficient is statistically significant. For example, lagged traffic is a strong indicator of next period's traffic as it is highly significant (p-value is close to zero).  The effect of Facebook ads is significant at 0.1% level while Google AdWords and Radio effects are significant at 10% level. Finally, the effect of TV ads is not statistically significant. 
+
+*How to interpret the coefficients?* 
+
+
+We start with the interpretation of the autoregressive coefficient. The estimated effect size is 0.536. If web traffic performance gains a certain momentum today, we would expect that it will carry over into future periods with an attrition rate of $0.464$ $(1-0.536)$. This implies that some FourTex customers make repeat web visits due to a gained place of the brand or ads in their memories while others stop visiting after some time because their ad or site memory decays rather quickly.
+
+Next, we look at the advertising media effects. Since this is a log-log model output, the estimated coefficients can be interpreted as elasticities: 
+
+
+*The expected % change in our response variable with respect to a % change in our predictor variable, holding other predictor variables constant.*
+
+
+To understand this better, let's focus on the effect of Google AdWords. Take two values of Google AdWords at two consecutive periods: A1 and A2. Holding the other variables fixed in the above equation, we obtain the following: 
+
+
+\[
+lnTraffic(A2)-lnTraffic(A1)=  0.155 \cdot  (lnAdwords(A2)- lnAdwords(A1)) 
+\] 
+  
+Using the logarithm properties, we can simplify this as follows: 
+
+\[
+ln \left( \frac {Traffic(A2)} {Traffic(A1)} \right)=  0.155 \cdot ln \left(  \frac {Adwords(A2)} {Adwords(A1)} \right) 
+\] 
+
+Simplifying the above equation further, we get: 
+
+\[
+\frac {Traffic(A2)} {Traffic(A1)}= \left( \frac {Adwords(A2)} {Adwords(A1)} \right)^{0.155} 
+\] 
+
+This result suggests that as long as the ratio of the two Google AdWords spending levels, i.e., $\frac {Adwords(A2)}{Adwords(A1)}$,  stays the same, the expected ratio of the response variable, $\frac {Traffic(A2)} {Traffic(A1)}$ stays the same. For example, when we increase Google AdWords by 10%, we expect about 1.5% increase in web traffic ($1.10^{0.155}=1.015$). 
+
+
+---
+
+**Question**: What is your interpretation of the estimated coefficients of the other advertising variables, Facebook, TV and radio? 
+
+---
+
+*R-squared*: 
+
+It is also known as coefficient of determination. It measures the proportion of variation in the response variable explained by the independent variables. In our case, the model we built explains 76% of the variation in logged traffic (see the Multiple R-squared from the regression output).
+
+*Adjusted R-squared*: 
+
+It is possible to increase the R-squared by adding more and more variables to the regression equation. However, the model's explanatory power can be increased just by chance when we add more variables to the model. To see whether a new variable will improve the model, the adjusted R-squared value should be checked. From the regression output, we see that the adjusted R-squared is 0.73. That means that our model did not suffer much from adding more variables (76% for R-squared vs. 73% for adjusted R-squared). 
+
+
+*Residual standard error*:
+
+Residual standard error (also known as standard error of regression) is a measure of the accuracy of predictions. Put it differently, it shows the average distance that the observed values deviate from the regression line. So, the lower the standard error of regression, the better. One can use this statistic to compare the model fits of alternative models. 
+
+
+*F-test *:
+
+We use the F-test to assess whether a linear regression with predictor variables is favoured over using only the average value of the response variable. The computed F-statistic is 31.29 with a p-value of 2.73E-14. Indeed, it is a very small number, less than the threshold of 0.05 for a 95% level of statistical significance. Thus, we can conclude that the model we estimated should be favoured over a simple mean of sales. 
+
+
+**_Model Fit_**
+
+After we estimate the coefficients, we can obtain the model fit plot to see whether our model captures the patterns in the traffic data.
+
+```{r}
+# Model fit plot 
+fitted_traffic<-ts(regression1$fitted.values, frequency = 52, start=c(2020,28))
+plot(lntraffic, type="l", col="blue", main="Web Traffic",lwd=2)
+lines(fitted_traffic, type="b", col="red")
+legend("topleft", lty=1, col=c("blue", "red"),
+       c("Logged Traffic Data","Fitted"))
+
+```
+
+---
+
+**Question**: Do you think the model predicted well the web traffic performance of FourTex?
+
+---
+
+
+**_Model Diagnostics_**
+
+Once we estimate our marketing mix model, it is usually a good practice to perform model diagnostic checks on the estimated residuals. In the marketing mix model above, we assume that residuals are uncorrelated (i.e. independent), have zero mean and constant variance. If the model passes these diagnostics, we conclude that the model is not misspecified and can be used to make statistical inferences and predictions. For a detailed review on how to conduct such diagnostic tests, the reader is referred to the chapter on demand forecasting. 
+
+Next, we turn our attention to the following questions that are central to the case study: 
+
+* What drives the web traffic performance? 
+
+* What is the traffic return on marketing investment? 
+
+* What is the optimal budget allocation? 
+
+
+## What drives web traffic performance? 
+
+What is the marketing’s contribution to web traffic performance? How much traffic was generated thanks to Google AdWords, Facebook, TV, and radio? To see this, first we need to convert the elasticities to unit effects using the following formula: 
+
+\[
+\theta_i= \beta_i \frac{\bar y}{\bar x_i}, \hspace{2cm} \scriptsize i=\{AdWords, Facebook, TV, Radio\}
+\]
+
+where $\theta_i$ denotes the unit effect for advertising media $i$, $\beta_i$ is the estimated elasticity for media $i$, $\bar y$ is  baseline (average) traffic, $\bar x_i$ is baseline advertising for media $i$. Readers who are interested in learning how to derive this formula are referred to Appendix. 
+
+ 
+For example, for Google AdWords, the formula above can be expressed as follows: 
+
+
+\[
+\theta_{AdWords}= \beta_{AdWords}\ \frac{{Baseline \hspace{0.1cm} Traffic} } {Baseline \hspace{0.1cm} AdWords}
+\]
+
+
+
+The following code chunk retrieves the coefficients (elasticities) from our log-log model output and then computes the unit effects. 
+
+```{r}
+#Retrieve each model coefficient: 
+beta_adwords<-summary(regression1)$coefficients[3,1]
+beta_facebook<-summary(regression1)$coefficients[4,1]
+beta_tv<-summary(regression1)$coefficients[5,1]
+beta_radio<-summary(regression1)$coefficients[6,1]
+
+#Calculate the baseline (average) traffic: 
+average_traffic<-mean(traffic)
+
+#Calculate the baseline (average) advertising spending for each media: 
+average_adwords<-mean(google_adwords)
+average_facebook<-mean(facebook)
+average_tv<-mean(tv)
+average_radio<-mean(radio)
+
+# Finally, calculate the unit effects: 
+theta_adwords<-beta_adwords*(average_traffic/average_adwords)
+theta_facebook<-beta_facebook*(average_traffic/average_facebook)
+theta_tv<-beta_tv*(average_traffic/average_tv)
+theta_radio<-beta_radio*(average_traffic/average_radio)
+
+```
+
+
+
+Next, we compute the contribution of each advertising media to the overall traffic performance using the following formula:  
+
+
+\[
+Contribution_i= \theta_i\sum_{t=1}^{T}{x_t^{i}}, \hspace{1cm} \forall i \in I 
+\]
+
+where $\theta_i$ indicates the estimated unit effect for advertising media $i$. $x_t^{i}$ is the spending of advertising media $i$ at time $t$. 
+
+For example, for Google AdWords, we multiply the estimated unit effect ($\theta$) of Google AdWords (6.44) by the sum of Google AdWords spending. We compute the contribution of the other advertising media in the same way.The code following code chunk performs this task. 
+
+```{r}
+#How much traffic we got thanks to TV, Adwords etc.?
+sum_adwords<-sum(google_adwords)
+sum_facebook<-sum(facebook)
+sum_tv<-sum(tv)
+sum_radio<-sum(radio)
+
+
+#Each media's contribution to traffic 
+adwords_contribution<-theta_adwords*sum_adwords
+facebook_contribution<-theta_facebook*sum_facebook
+tv_contribution<-theta_tv*sum_tv
+radio_contribution<-theta_radio*sum_radio
+
+print(adwords_contribution)
+print(facebook_contribution)
+print (tv_contribution)
+print (radio_contribution)
+
+```
+
+We can show these media contributions graphically as well. We will use bar plots for this. To obtain the bar plots, we need to install the package called *ggplot2*. If you have installed the *ggplot2* to your computer previously, you can add a hashtag symbol,$#$ and then run the code.See below. 
+
+
+```{r}
+# Note: If you have not installed the 'ggplot2' package to your computer before,
+# remove the hashtag symbol, #,  and run the code. 
+#install.packages("ggplot2")
+library(ggplot2)
+```
+
+We need to plug in the necessary data for the bar plot. So, we need the following pieces: 
+
+
+```{r}
+# Bar plot information 
+media_contribution<-c(adwords_contribution,facebook_contribution,
+                      tv_contribution, radio_contribution)
+media_contribution=round(media_contribution, digits=0)
+media_names<-c("AdWords","Facebook", "TV","Radio")
+df<-data.frame(media_names,media_contribution)
+head(df)
+
+```
+
+In the code chunk above, the first and second lines produce the *media contribution* column using the calculated contribution of each media. The third line of the code rounds off the numbers to zero decimal places. The fourth line tells R the names of the variables. The fifth line of the code combines the media contribution and media names together, and creates a *data frame* called *df*. Finally, the last line *head(df)* shows the data in R Markdown. 
+
+We will use this information to create a bar plot of the web traffic contribution of each media: 
+
+
+```{r}
+barp_plot1<-ggplot(data=df,aes(x=media_names,y=media_contribution)) + 
+  geom_bar(stat="identity", color="black", 
+           fill=c("Red","Orange","Blue","Green")) +
+  geom_text(aes(label=media_contribution), vjust=-0.3, size=3.5)+
+  labs(title="Contribution to Traffic", x="Media", y="Contribution") +
+  theme_minimal()
+#bar_plot1
+# change the order of the bars
+barp_plot1 + scale_x_discrete(limits=c("Facebook","AdWords","Radio","TV"))
+
+```
+
+
+
+Let's describe the code chunk that generated this bar chart. The first line of the code tells R to use the function *ggplot*, which is characterized by *data*, *x-axis*, and *y-axis* inputs. The second and third lines (*geom_bar*) dictate the shape and colour details of the bars in the plot. The fourth line (*geom_text*) adds the data labels to the bars. The fifth line provides the *title* of the plot, and *names* of the horizontal and vertical *axis*. The last line suggests that there will be minimal touch at the background of the plot. Note that the $+$ sign between the lines suggest that the code continues. 
+
+
+This bar plot suggests that most of the traffic is driven by Facebook and Google AdWords campaigns, with Facebook being the leading contributor. Radio and TV contribute very little. 
+
+Sometimes, it is difficult to communicate large numbers displayed above the bars. To avoid this, we can compute the contribution of each traffic driver in percentage terms. 
+
+
+Install and launch the *formattable* package that helps us use the percentage format. If you have installed the *formattable*  to your computer previously, you can add a hashtag symbol,$#$ and then run the code. See below. 
+
+
+
+```{r}
+#Contribution in %. 
+#install.packages("formattable")
+library(formattable)
+```
+
+Next, we compute the media contributions in $\%$. 
+
+
+
+```{r}
+#Calculate each media's contribution as %. 
+allmedia_contribution<-adwords_contribution++facebook_contribution+
+  tv_contribution+radio_contribution
+
+adwords_pct<-adwords_contribution/allmedia_contribution
+facebook_pct<-facebook_contribution/allmedia_contribution
+tv_pct<-tv_contribution/allmedia_contribution
+radio_pct<-radio_contribution/allmedia_contribution
+
+##  all media in a vector (contribution in %)
+pct_contribution<-c(adwords_pct,facebook_pct,tv_pct, radio_pct)   
+pct_contribution<-percent(pct_contribution)        # this line writes the numbers in %
+
+
+media_names<-c("Adwords", "Facebook","TV","Radio")
+df2<-data.frame(media_names,pct_contribution)
+head(df2)
+
+```
+
+
+Finally, we obtain the bar plot that shows media contribution in percentage terms: 
+
+```{r}
+barp_plot2<-ggplot(data=df2,aes(x=media_names,y=pct_contribution)) + 
+  geom_bar(stat="identity", color="black", 
+           fill=c("Red","Orange","Blue","Green")) +
+  geom_text(aes(label=pct_contribution), vjust=-0.3, size=3.5)+
+  labs(title="Contribution to Traffic in %", x="Media", y="Contribution (%)") +
+  theme_minimal()
+#barp_plot2
+# change the order of the bars
+barp_plot2 + scale_x_discrete(limits=c("Facebook", "Adwords","Radio","TV")) 
+
+```
+
+The bar plot above suggests that 53.7% of the web traffic is driven by Facebook, 43.1% is driven by Google AdWords, 1.9% by radio, and 1.3% by TV. 
+
+<br/>
+
+## Return on Marketing Investment
+
+Does performance increase most with a $£1$ reduction in TV ads,or by increasing social media ads by $£1$ ? Financially oriented marketing executives are very often concerned about the return on marketing investment (ROMI). That is, they would like to know how much they earn with respect to how much they spend. Usually, the return metric is sales, revenues, or profits. However, it can also be something non-financial, e.g. customer engagement, web traffic and store traffic. 
+
+
+Let's calculate the traffic return on marketing investment (TROMI) for FourTex. 
+
+The first input we need is the cost data: 
+
+```{r}
+#Calculate the cost of each media
+cost_adwords<-sum(google_adwords)
+cost_facebook<-sum(facebook)
+cost_tv<-sum(tv)
+cost_radio<-sum(radio)
+cost_total<-cost_adwords+cost_facebook+cost_tv+cost_radio
+
+cost<-c(cost_adwords,cost_facebook,cost_tv,cost_radio)
+cost=round(cost, digits=0)
+
+```
+
+
+Below is the input that we need for the bar plot of traffic contribution vs. cost incurred: 
+
+```{r}
+# Traffic Contribution vs. Cost  
+df3<-data.frame(traf_cost=rep(c("Traffic","Cost"), each=4), 
+                media_names=rep(c("Adwords", "Facebook","TV","Radio"),2),
+                values=c(media_contribution, cost))
+head(df3)
+
+```
+
+
+Then, we can see the traffic return and cost data together in a bar plot: 
+
+```{r}
+barp_plot3<-ggplot(data=df3, aes(x=media_names,y=values,fill=traf_cost)) +
+                     geom_bar(stat="identity", color="black", position=position_dodge()) +
+  labs(title="Traffic vs. Media Cost", x="Media", y="Traffic and Cost") +
+  theme_minimal()
+  
+bar_plot3<-barp_plot3 + scale_x_discrete(limits=c("Facebook", "Adwords", "TV","Radio")) 
+bar_plot3
+
+```
+
+</br> 
+
+---
+
+**Discussion**: What is your conclusion with regard to traffic generated and cost incurred? Which media returns the most and least?
+
+---
+
+
+Instead of showing cost and return data together, we can just compute the TROMI, and show the results in percentages. To do so, we need to divide the traffic contribution of each media by the cost of each media: 
+
+```{r}
+# Calculate the traffic return for each media 
+roi_adwords=adwords_contribution/cost_adwords
+roi_facebook=facebook_contribution/cost_facebook
+roi_tv=tv_contribution/cost_tv
+roi_radio=radio_contribution/cost_radio
+
+```
+
+
+Next, we generate the input for the TROMI plot. 
+
+```{r}
+# TROMI Plot input 
+roi<-c(roi_adwords, roi_facebook, roi_tv,roi_radio)
+# Round off the numbers. 
+roi=round(roi, digits=0)
+
+media_names<-c("Adwords", "Facebook","TV","Radio")
+df4<-data.frame(media_names,roi)
+head(df4)
+
+```
+
+
+Finally, we obtain the bar plot for the TROMI analysis: 
+
+```{r}
+# TROMI bar plot 
+bar_plot4<-ggplot(data=df4, aes(x=media_names,y=roi)) + 
+  geom_bar(stat="identity", color="black", 
+           fill=c("Red","Orange","Blue","Green")) +
+  geom_text(aes(label=roi), vjust=-0.3, size=3.5) +
+  labs(title="Traffic Return on Marketing Investment", x="Media", y="TROMI") +
+  theme_minimal()
+bar_plot4<-bar_plot4  + scale_x_discrete(limits=c("Facebook", "Adwords", "Radio","TV")) 
+bar_plot4  
+
+```
+
+
+What does this figure tell us? In a nutshell, it suggests that for every $£1$ spent on Facebook, the expected number of web visits is $11$. Similarly, for every $£1$ spent on Google AdWords campaigns,  we expect $6$ visits to occur. 
+
+</br>
+
+---
+
+**Question**: Are you surprised that the traffic return on investment for TV and radio is zero? Why do you think that the company invested so much in TV and radio channels although their traffic return is absent?  
+
+---
+
+
+## Marketing budget allocation
+
+Marketing analysts follow to main approaches to guide their resource allocation strategies. One of them is normative decision making based on constrained optimization models (e.g. profit maximization subject to budget constraints).Another method is elasticity-based allocation. In this R application, we will allocate the marketing budget of FourTex by making use of the elasticities obtained from the log-log regression model.  
+
+
+Before diving into the optimal resource allocation, let's see what the current budget allocation looks like: 
+
+```{r}
+#Actual Budget Spending
+costshare_adwords<-cost_adwords/cost_total
+costshare_facebook<-cost_facebook/cost_total
+costshare_tv<-cost_tv/cost_total
+costshare_radio<-cost_radio/cost_total
+
+# Input for the pie-chart 
+slices_actual<-c(costshare_adwords, costshare_facebook,costshare_tv,costshare_radio )
+lbls_actual<-c("Adwords", "Facebook", "TV", "Radio")
+pct_actual<-round(slices_actual*100)
+lbls_actual<-paste(lbls_actual, pct_actual)          # add data to labels
+lbls_actual<-paste(lbls_actual, "%", sep="")  # add % sign to labels
+
+# Get the pie-chart
+pie(slices_actual, labels=lbls_actual, col=rainbow(length(lbls_actual)), main="Actual Ad Spending" )
+
+
+```
+
+
+This pie-chart tells us that 61% of the marketing budget was used for TV ads while 16% of the budget went to radio campaigns, 13% for Google AdWords, and 9% for Facebook. Given our findings on the media elasticities, how would you spend the budget? Would you spend so much money on TV ads to boost web traffic? 
+
+
+For the optimal allocation, we will use the estimated coefficients ($\beta$'s) from the log-log regression model. Recall that those coefficients are elasticities. 
+
+
+We calculate the optimal allocation for each media using the following formula: 
+
+
+\[
+Optimal \hspace{0.1cm} Allocation_i= \frac{\beta_i} {\sum_{i=1}^{I}{\beta_i}}, \hspace{1.5cm} \scriptsize i=\{AdWords, Facebook, TV, Radio\}
+\]
+
+
+
+
+As an example, for Google AdWords, we will do it as follows: 
+
+\[
+OptimalAllocation_{AdWords}= \frac{\beta_{AdWords}} {\beta_{AdWords} + \beta_{Facebook} + \beta_{TV} + \beta_{Radio}} 
+\]
+
+
+Let's do this in R now: 
+
+```{r}
+#The sum of all elasticities 
+beta_allmedia<-beta_adwords+beta_facebook+beta_tv+beta_radio
+
+#Optimal resource allocation
+optim_adwords<-beta_adwords/beta_allmedia
+optim_facebook<-beta_facebook/beta_allmedia
+optim_tv<-beta_tv/beta_allmedia
+optim_radio<-beta_radio/beta_allmedia
+
+```
+
+You can see the computed allocation at the top right of the screen under the *Environment* tab. Now, we can get a pie-chart that shows the allocation visually with percentages.
+
+```{r}
+## Pie-chart ingredients 
+optimal_spend<-c(optim_adwords,optim_facebook,optim_tv,optim_radio)
+optimal_spend=round(optimal_spend, digits=2)
+optimal_spend
+
+slices_optim<-c(optim_adwords, optim_facebook,optim_tv,optim_radio)
+lbls_optim<-c("Adwords", "Facebook", "TV","Radio")
+pct_optim<-round(slices_optim*100)
+lbls_optim<-paste(lbls_optim, pct_optim)   # paste variable names to data labels 
+lbls_optim<-paste(lbls_optim, "%", sep="") # add % sign to labels
+
+# Get the pie-chart
+pie(slices_optim, labels=lbls_optim, col=rainbow(length(lbls_optim)), main="Optimal Budget Allocation" )
+
+```
+
+
+---
+
+**Question**: What is your conclusion? Is the optimal allocation different from the actual spending? What would you suggest FourTex in terms of how they should deploy their marketing resources to boost the web traffic performance? Would the optimal allocation be different for a different performance metric (e.g. sales)? 
+
+---
+
+
+We reach the end of this R application. To summarise, through the case study on FourTex, we explored how to: 
+
+* assess the contribution of different advertising channels to web traffic performance 
+
+* perform return on marketing investment analysis 
+
+* allocate marketing budget optimally based on estimated elasticities.
+
+
+---
+
+
+## Appendix
+
+Here we demonstrate how unit (marginal) effects and elasticities are interrelated. Suppose that we have the following log-log model:  
+
+\[
+ln(y)= \beta_0 + \beta_1 ln(x_1)  + \epsilon 
+\]
+
+
+Note that we omit the subscript $t$ to keep the notation simple.  Solving for $y$, we get: 
+
+
+
+$$y=e^{\beta_0 + \beta_1 ln(x_1)  + \epsilon}$$
+
+Next, we differentiate $y$ with respect to $x_1$: 
+
+
+$$\frac {dy} {dx_{1}}= \frac {\beta_{1}} {x_1} e^{\beta_0 + \beta_1 ln(x_1)+\epsilon}$$
+
+
+Since $y=e^{\beta_0 + \beta_1 ln(x_1)  + \epsilon}$, we can express the equation above as follows:   
+
+
+$$\frac {dy} {dx_{1}}= \frac {\beta_{1}} {x_1} y $$
+
+
+Re-arranging the terms, we get the unit (marginal) effects as follows: 
+
+
+$$\frac {dy} {dx_{1}}= {\beta_{1}} \frac  {y} {x_1}$$
+
+
+where $y$ and $x$ can be replaced by average values over a range. 
+
+It is straightforward to see that $\beta_{1}$ is elasticity:  
+
+
+$${\beta_{1}} = \frac {dy} {dx_{1}} \frac {x_1} {y}$$ 
+
+
+---
+
+</br>
+</br>
+

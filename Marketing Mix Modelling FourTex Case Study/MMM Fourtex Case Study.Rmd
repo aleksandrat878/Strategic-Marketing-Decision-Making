@@ -1,0 +1,405 @@
+---
+title: "Marketing Mix Modelling (MMM)"
+subtitle: "Case Study: FourTex"
+author: "Aleksandra Tatko"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    theme: paper
+---
+
+```{r, eval=FALSE, echo=FALSE}
+# Global knit options
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE,
+  fig.align = "center", fig.width = 8, fig.height = 4, fig.asp = NULL
+)
+options(scipen = 999)  # turn off scientific notation
+
+# Libraries
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(scales)
+library(broom)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+set.seed(123)
+
+```
+
+## Case Background
+
+FourTex is an apparel brand targeting the mass market with casual apparel for men and women. The brand advertises across TV, radio, paid search (Google AdWords), and social (Facebook). Recently, digital tools extended reach and boosted **website traffic**, which is the KPI in focus (not sales).
+
+Mrs. Schmidt—FourTex’s Marketing Director— **must quantify the incremental impact** of each channel and justify budget decisions.
+
+We will answer:
+
+* **Q1.** Which marketing mix instruments drive website traffic?
+
+* **Q2.** What is the *traffic return on marketing investment (TROMI)* by channel?
+
+* **Q3.** Should she keep pushing Google/Facebook? What about TV/Radio?
+
+* **Q4.** How to demonstrate impact and propose an *optimal budget split?*
+
+---
+
+## 1) Data Preparation
+```{r}
+# Load the Dateset
+library(readr)
+data <- readr::read_csv("data_fourtex.csv", show_col_types = FALSE)
+str(data)
+```
+```{r}
+library(tidyverse)
+
+# Basic sanity checks
+stopifnot(all(c("Google_Adwords","Facebook","TV","Radio","traffic") %in% names(data)))
+
+# Create a weekly date index for nicer plots (52 obs/year)
+start_date <- as.Date("2020-07-06") # ~2020 week 28
+data <- data %>%
+  mutate(
+    week = seq.Date(from = start_date, by = "week", length.out = n())
+  )
+
+# Handle NAs if any (drop rows with missing key inputs)
+data <- data %>% drop_na(Google_Adwords, Facebook, TV, Radio, traffic)
+```
+
+### Extract variables
+```{r eval = TRUE, echo = TRUE}
+# Retrieve the variables
+
+google_adwords <- data$Google_Adwords
+facebook <- data$Facebook
+tv <- data$TV
+radio <- data$Radio
+traffic <- data$traffic
+```
+
+---
+
+### Time series Conversion
+We assume weekly data with 52 observations per year. The first observation is set to **2020, week 28** to mirror your original script. The exact calendar date is not critical for the model, but it helps for readable plots.
+
+```{r}
+google_adwords <- ts(google_adwords, frequency = 52, start = c(2020,28))
+facebook <- ts(facebook, frequency = 52, start = c(2020,28))
+tv <- ts(tv, frequency = 52, start = c(2020,28))
+radio <- ts(radio, frequency = 52, start = c(2020,28))
+traffic <- ts(traffic, frequency = 52, start = c(2020,28))
+```
+
+---
+
+## 2) Visual Inspection
+```{r}
+online_total <- google_adwords + facebook
+
+offline_total <- tv + radio
+par(mfrow=c(1,3))
+
+plot(traffic, col = "blue", main = "Online traffic")
+plot(online_total, col= "darkgreen", main = "Online spending")
+
+plot(offline_total, col = "red", main =  "Offline spending")
+```
+
+**Question**: Looking at these plots, what do you observe? Do increases and decreases in online traffic coincide with online and offline spending? Do you see any seasonality or trend patterns? 
+
+
+
+Next, we will have a look at the current budget allocation of online vs. traditional media spending. How much did the brand spend for online ads relative to offline ads?
+
+### Media spending share
+```{r}
+sum_online <- sum(online_total)
+sum_offline <- sum(offline_total)
+total_spend <- sum_online + sum_offline
+
+online_share  <- sum_online / total_spend
+offline_share <- sum_offline / total_spend
+
+# Pie chart for Media Spending Share
+slices <- c(online_share, offline_share)
+lbls   <- c("Online", "Offline")
+
+
+# Add percentage labels
+pct   <- round(slices * 100)
+lbls  <- paste(lbls, pct, "%", sep=" ")
+
+par(mfrow = c(1, 1))
+pie(slices,
+    labels = lbls,
+    col = rainbow(length(lbls)),
+    main = "Ad Spending Share")
+```
+
+The pie chart shows that FourTex spent 77% of its budget for offline ads while 23% of the budget went to online ads. 
+
+---
+
+## 3) Marketing mix modeling 
+
+After exploring the main features of the data, we are ready to investigate the drivers of the web traffic performance. We will develop a multiple regression model that uses the traffic data as dependent variable (i.e. response variable) while Google AdWords, Facebook, TV, and radio variables will be used as independent variables (predictors).
+
+### Diminishing Returns
+At this point, an important decision we need to make is which functional form to use in the model. Shall we assume a linear or a non-linear relationship? Marketing literature suggests that the relationship between advertising and performance variables mostly follows a diminishing return pattern (Hanssens et al., 2001, 2014)
+
+---
+
+### Log Transformations in Marketing Mix Models
+
+- Advertising often exhibits **diminishing returns**: each extra dollar spent drives less additional sales/traffic.  
+- The natural logarithm function, `log(x)`, captures this shape automatically: it rises quickly at first, then flattens out.  
+- Logging variables also helps **stabilize variance** and reduce skewness in the data.  
+
+To estimate the above log-log model, we will perform log transformation on our variables. 
+
+### Apply log(+1) transform
+```{r}
+lngoogle_adwords<-log(google_adwords+1)
+lnfacebook<-log(facebook+1)
+lnTV<-log(tv+1)
+lnradio<-log(radio+1)
+lntraffic<-log(traffic+1)
+
+```
+
+### Why do we add `+1`?
+- `log(0)` is **undefined** (goes to negative infinity).  
+- Since marketing spend or impressions may contain **zero values** (e.g., weeks with no ads), we shift the data slightly:  
+  ```r
+  log(x + 1)
+  ```
+- This ensures the log is always valid:
+  - If `x = 0`, then `log(0+1) = 0`.  
+  - If `x > 0`, the shift has a very small effect.  
+
+### Creating Lagged Traffic Variable 
+```{r}
+m <- 1   # one lag 
+#number of observations
+n <- length(traffic)
+#Build Lag
+L1.lntraffic <- c(rep(NA,m), lntraffic[1:(n-m)])
+
+```
+
+### Regression model
+```{r}
+#Fit a Regression 
+options(scipen=999)
+#regression1 <- lm(traffic~L1.traffic+google_adwords+facebook+tv+radio)
+regression1 <- lm(lntraffic~L1.lntraffic+lngoogle_adwords+lnfacebook+lnTV+lnradio)
+summary(regression1)
+
+```
+
+---
+
+## 4) How to interpret regression coefficients
+
+1. **Log-Log model**
+   - Model:  
+     \[
+     \ln(Y) = \alpha + \beta \ln(X)
+     \]
+   - Interpretation:  
+     - **β = elasticity**  
+     - A 1% increase in \(X\) leads to a **β% change in \(Y\)**.  
+     - Example: If β = 0.4, then a 1% increase in spend increases sales by 0.4%.  
+
+---
+
+2. **Semi-log models**
+   - **Log-linear (log Y only)**  
+     \[
+     \ln(Y) = \alpha + \beta X
+     \]  
+     - A 1-unit increase in \(X\) changes \(Y\) by \((e^{\beta} - 1)\times 100\%\).  
+     - Approximation: if β is small, then each unit of \(X\) gives about \(100 \times β\%\) change in \(Y\).  
+
+   - **Linear-log (log X only)**  
+     \[
+     Y = \alpha + \beta \ln(X)
+     \]  
+     - A 1% increase in \(X\) changes \(Y\) by \(\beta / 100\) units.  
+     - Captures diminishing returns in \(X\), but keeps \(Y\) in levels.  
+
+---
+
+**Summary:**  
+- **Log-log** is the most common in MMM because elasticity (%↔%) is intuitive.  
+- **Semi-log** is useful when only one side grows nonlinearly.  
+- Adding `+1` ensures zeros don’t break the log transformation. 
+
+
+## 5) Model Fit: Actual vs Fitted
+
+After we estimate the coefficients, we can obtain the model fit plot to see whether our model captures the patterns in the traffic data.
+
+```{r actual-vs-fitted}
+fitted_traffic <- ts(regression1$fitted.values, frequency = 52, start = c(2020, 28))
+
+
+plot(lntraffic, type = "l", col = "blue", lwd = 2,
+main = "Web Traffic", ylab = "Log Traffic", xlab = "Time")
+lines(fitted_traffic, col = "red", lwd = 2)
+legend("topleft", lty = 1, col = c("blue", "red"), legend = c("Actual", "Fitted"))
+```
+
+## 6) Contributions & TROMI
+
+We convert elasticities to **unit effects** around the average level to estimate **contribution to traffic** and **traffic ROI**:
+\[
+\frac{dY}{dX} \approx \beta \cdot \frac{\bar{Y}}{\bar{X}} \quad \Rightarrow \quad
+\text{contribution} \approx \theta \times \text{spend}
+\]
+
+### Unit Effects (θ)
+```{r}
+beta <- coef(regression1)
+beta_adwords <- beta["lngoogle_adwords"]
+beta_facebook <- beta["lnfacebook"]
+beta_tv <- beta["lnTV"]
+beta_radio <- beta["lnradio"]
+
+
+avg_traffic <- mean(traffic)
+avg_adwords <- mean(google_adwords)
+avg_facebook <- mean(facebook)
+avg_tv <- mean(tv)
+avg_radio <- mean(radio)
+
+
+theta_adwords <- beta_adwords * (avg_traffic / avg_adwords)
+theta_facebook <- beta_facebook * (avg_traffic / avg_facebook)
+theta_tv <- beta_tv * (avg_traffic / avg_tv)
+theta_radio <- beta_radio * (avg_traffic / avg_radio)
+```
+
+### Total Contribution
+```{r}
+sum_adwords <- sum(google_adwords)
+sum_facebook <- sum(facebook)
+sum_tv <- sum(tv)
+sum_radio <- sum(radio)
+
+
+adwords_contribution <- theta_adwords * sum_adwords
+facebook_contribution <- theta_facebook * sum_facebook
+tv_contribution <- theta_tv * sum_tv
+radio_contribution <- theta_radio * sum_radio
+```
+
+### Plot Contribution
+```{r contribution-plot}
+media_contribution <- round(c(adwords_contribution, facebook_contribution, tv_contribution, radio_contribution))
+media_names <- c("Adwords", "Facebook", "TV", "Radio")
+df <- data.frame(media_names, media_contribution)
+
+
+bar_plot <- ggplot(df, aes(x = media_names, y = media_contribution)) +
+geom_bar(stat = "identity", color="black", 
+           fill=c("Red","Orange","Blue","Green")) +
+geom_text(aes(label = media_contribution), vjust = -0.5) +
+labs(title = "Contribution to Traffic", x = "Media", y = "Traffic") +
+theme_minimal()
+
+bar_plot
+```
+
+### ROI per Channel (TROMI)
+```{r}
+roi_adwords <- adwords_contribution / sum_adwords
+roi_facebook <- facebook_contribution / sum_facebook
+roi_tv <- tv_contribution / sum_tv
+roi_radio <- radio_contribution / sum_radio
+
+
+df_roi <- data.frame(
+media = media_names,
+roi = round(c(roi_adwords, roi_facebook, roi_tv, roi_radio), 2)
+)
+
+
+ggplot(df_roi, aes(x = media, y = roi, fill = media)) +
+geom_bar(stat = "identity", color = "black") +
+geom_text(aes(label = roi), vjust = -0.5) +
+labs(title = "Traffic ROI (TROMI)", y = "TROMI", x = NULL) +
+theme_minimal()
+
+```
+
+
+---
+
+## 7) Optimal vs Actual Budget Allocation
+
+
+### Actual Shares
+```{r}
+cost <- c(sum_adwords, sum_facebook, sum_tv, sum_radio)
+cost_total <- sum(cost)
+cost_share <- cost / cost_total
+```
+
+
+### Optimal Shares (Based on Elasticities)
+```{r}
+beta_sum <- beta_adwords + beta_facebook + beta_tv + beta_radio
+opt_share <- c(beta_adwords, beta_facebook, beta_tv, beta_radio) / beta_sum
+```
+
+
+### Pie Charts
+```{r}
+lbl_actual <- paste(media_names, round(cost_share * 100), "%")
+pie(cost_share, labels = lbl_actual, col = rainbow(4), main = "Actual Budget Allocation")
+
+
+lbl_opt <- paste(media_names, round(opt_share * 100), "%")
+pie(opt_share, labels = lbl_opt, col = rainbow(4), main = "Optimal Budget Allocation")
+```
+
+---
+
+## 8) Summary and Final Recommendations
+
+**1. Which Channels Drive Traffic the Most?**
+
+* **Google AdWords and Facebook** had the strongest positive impact on traffic, suggesting digital channels are highly responsive and efficient.
+
+**2. Return on Marketing Investment (TROMI)**
+
+* **Facebook and Google AdWords** delivered the **highest returns** in terms of traffic per unit of spending.
+
+* **TV and Radio** contributed **less traffic** for each unit spent, indicating **lower ROI**.
+
+**3. Budget Allocation**
+
+* Current allocation favors **offline channels** (TV + Radio), which receive **~77% of the total budget**.
+
+* However, based on estimated elasticities, the **optimal budget split** would reallocate more budget toward online channels:
+
+  + Increase investment in **Google AdWords and Facebook**.
+
+  + Reduce spending on **TV and Radio** or re-evaluate their creative/message effectiveness.
+  
+**4. Caveats & Next Steps**
+
+* The model assumes linear log-log relationships and does not include **adstock or seasonality**.
+
+* Further modeling (e.g., with **lagged or decayed effects**) could capture delayed impact of traditional media better.
+
+* Test **creative quality and targeting** of underperforming channels before cutting them.
